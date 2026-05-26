@@ -48,23 +48,23 @@ async function main() {
     await prisma.leaveType.create({ data: t });
   }
 
-  console.log('Seeding root IT Owner user...');
-  const passwordHash = await bcrypt.hash('password123', 10);
+  console.log('Seeding root Admin user...');
+  const passwordHash = await bcrypt.hash('Password@123', 10);
 
-  // 1. IT Owner ONLY
+  // 1. Admin ONLY
   await prisma.user.create({
     data: {
       id: 'usr-owner',
-      email: 'ankurak2369@gmail.com',
-      name: 'JD',
-      role: 'IT Owner',
+      email: 'admin@antbox.com',
+      name: 'Admin',
+      role: 'Admin',
       password: passwordHash
     }
   });
 
   console.log('----------------------------------------');
   console.log('Database seeded with bare-minimum data for production start.');
-  console.log('IT Owner: ankurak2369@gmail.com / password123');
+  console.log('Admin: admin@antbox.com / Password@123');
   console.log('No dummy employees, locations, or departments exist.');
   console.log('----------------------------------------');
 }
