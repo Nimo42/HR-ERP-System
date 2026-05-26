@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react';
 
 export default function HolidaysPage() {
   const [holidays, setHolidays] = useState([]);
+  const [holidayYear, setHolidayYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: '', date: '' });
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -15,9 +17,32 @@ export default function HolidaysPage() {
       .then(res => res.json())
       .then(d => {
         if (d.holidays) setHolidays(d.holidays);
+        if (d.holidayYear) setHolidayYear(d.holidayYear);
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/admin/org-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section: 'holiday', data: { action: 'sync' } })
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        alert(d.message || 'Failed to sync holidays');
+      } else {
+        alert(`Holiday sync complete for ${d.year}. Added ${d.created || 0} new holidays.`);
+        load();
+      }
+    } catch {
+      alert('Failed to sync holidays');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -74,7 +99,7 @@ export default function HolidaysPage() {
             </div>
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#4b5563', marginBottom: 4 }}>Date</label>
-              <input required type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: 8, boxSizing: 'border-box' }} />
+              <input required type="date" min={`${holidayYear}-01-01`} max={`${holidayYear}-12-31`} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: 8, boxSizing: 'border-box' }} />
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
               <button type="button" onClick={() => setShowAdd(false)} style={{ padding: '0.625rem 1.25rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>Cancel</button>
@@ -87,9 +112,12 @@ export default function HolidaysPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Holiday Calendar</h1>
-          <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>Define org-wide non-working days.</p>
+          <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>Define org-wide paid holidays for {holidayYear}. Holiday dates are treated as paid leave in payroll.</p>
         </div>
-        <button onClick={() => setShowAdd(true)} style={{ padding: '0.625rem 1.25rem', borderRadius: 9999, border: 'none', background: '#7B5EA7', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}>+ Add Holiday</button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={handleSync} disabled={syncing} style={{ padding: '0.625rem 1rem', borderRadius: 9999, border: '1px solid #d1fae5', background: '#ecfdf5', color: '#047857', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer' }}>{syncing ? 'Syncing...' : `Sync ${holidayYear} From API`}</button>
+          <button onClick={() => setShowAdd(true)} style={{ padding: '0.625rem 1.25rem', borderRadius: 9999, border: 'none', background: '#7B5EA7', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}>+ Add Holiday</button>
+        </div>
       </div>
 
       <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f0ece6', overflow: 'hidden' }}>

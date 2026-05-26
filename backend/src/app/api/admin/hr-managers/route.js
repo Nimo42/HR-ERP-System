@@ -156,8 +156,8 @@ export async function PATCH(request) {
     if (!hr || hr.role !== 'HR Manager') return NextResponse.json({ message: 'HR Manager not found' }, { status: 404 });
 
     if (action === 'deactivate') {
-      await prisma.user.delete({ where: { id } });
-      return NextResponse.json({ success: true, message: 'Account deleted permanently' });
+      await prisma.user.update({ where: { id }, data: { deletedAt: new Date() } });
+      return NextResponse.json({ success: true, message: 'Account deactivated' });
     }
 
     if (action === 'reactivate') {

@@ -91,6 +91,23 @@ export async function PATCH(request, { params }) {
 
     const body = await request.json();
 
+    if (body.action && isHR) {
+      if (body.action === 'deactivate') {
+        const updated = await prisma.user.update({
+          where: { id },
+          data: { deletedAt: new Date() }
+        });
+        return NextResponse.json({ success: true, employee: updated, message: 'Employee deactivated' });
+      }
+      if (body.action === 'reactivate') {
+        const updated = await prisma.user.update({
+          where: { id },
+          data: { deletedAt: null }
+        });
+        return NextResponse.json({ success: true, employee: updated, message: 'Employee reactivated' });
+      }
+    }
+
     const updateData = {};
     if (isHR) {
       const { name, joinDate, probationEnd, emergencyContact, departmentId, managerId, bankDetails, role, isRemoteEligible, monthlySalary } = body;

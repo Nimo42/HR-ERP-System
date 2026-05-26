@@ -82,9 +82,9 @@ export async function GET(request) {
     const decoded = jwt.decode(token);
     if (!decoded) return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
 
-    const isHR = decoded.role === 'HR Manager';
+    const canViewAll = ['HR Manager', 'Admin', 'IT Owner'].includes(decoded.role);
 
-    if (isHR) {
+    if (canViewAll) {
       // HR/Owner sees all runs and draft/finalized payslips
       const runs = await prisma.payrollRun.findMany({
         include: {
@@ -123,7 +123,7 @@ export async function POST(request) {
     if (!token) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
 
     const decoded = jwt.decode(token);
-    if (!decoded || decoded.role !== 'HR Manager') {
+    if (!decoded || !['HR Manager', 'Admin', 'IT Owner'].includes(decoded.role)) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
 
@@ -159,12 +159,17 @@ export async function POST(request) {
     const totalWorkdays = getWeekdaysInMonth(parseInt(year), parseInt(month));
     const startOfMonth = new Date(year, month - 1, 1);
     const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
-    const paidHolidayCount = await prisma.holidayCalendar.count({
+    const paidHolidays = await prisma.holidayCalendar.findMany({
       where: {
         deletedAt: null,
         date: { gte: startOfMonth, lte: endOfMonth }
-      }
+      },
+      select: { date: true }
     });
+    const paidHolidayCount = paidHolidays.filter((h) => {
+      const day = new Date(h.date).getDay();
+      return day !== 0 && day !== 6;
+    }).length;
 
     const draftPayslips = [];
 
@@ -187,9 +192,6 @@ export async function POST(request) {
 
       for (const u of users) {
         const baseSalary = Number(u.monthlySalary || 0);
-        if (baseSalary <= 0) {
-          continue;
-        }
 
         // Deductions formulas
         // Active-hours based payroll:

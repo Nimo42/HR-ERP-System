@@ -107,9 +107,14 @@ export async function POST(request) {
     const totalWorkdays = getWeekdaysInMonth(year, month);
     const startOfMonth = new Date(year, month - 1, 1);
     const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
-    const paidHolidayCount = await prisma.holidayCalendar.count({
-      where: { deletedAt: null, date: { gte: startOfMonth, lte: endOfMonth } }
+    const paidHolidays = await prisma.holidayCalendar.findMany({
+      where: { deletedAt: null, date: { gte: startOfMonth, lte: endOfMonth } },
+      select: { date: true }
     });
+    const paidHolidayCount = paidHolidays.filter((h) => {
+      const day = new Date(h.date).getDay();
+      return day !== 0 && day !== 6;
+    }).length;
 
     const run = await prisma.$transaction(async (tx) => {
       let payrollRun = existingRun;
@@ -127,7 +132,6 @@ export async function POST(request) {
 
       for (const u of users) {
         const baseSalary = Number(u.monthlySalary || 0);
-        if (baseSalary <= 0) continue;
 
         const monthLogs = await tx.attendanceLog.findMany({
           where: { userId: u.id, clockInTime: { gte: startOfMonth, lte: endOfMonth } },

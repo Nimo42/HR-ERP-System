@@ -26,12 +26,14 @@ export function calculatePayrollBreakdown({
 
   const payableHours = Math.max(0, Math.min(safeRequired, safeWorked + safeHoliday));
   const unpaidHours = Math.max(0, safeRequired - payableHours);
-  const lop = safeRequired > 0 ? (gross * unpaidHours) / safeRequired : 0;
+  const payableRatio = safeRequired > 0 ? payableHours / safeRequired : 1;
+  const earnedGross = gross * payableRatio;
+  const lop = Math.max(0, gross - earnedGross);
 
-  const pf = gross * PF_RATE;
-  const esi = gross * ESI_RATE;
-  const tds = gross * TDS_RATE;
-  const net = Math.max(0, gross - pf - esi - tds - lop);
+  const pf = earnedGross * PF_RATE;
+  const esi = earnedGross * ESI_RATE;
+  const tds = earnedGross * TDS_RATE;
+  const net = Math.max(0, earnedGross - pf - esi - tds);
 
   return { gross, pf, esi, tds, lop, net, payableHours, unpaidHours };
 }
