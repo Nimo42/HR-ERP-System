@@ -19,7 +19,7 @@ export default function UnifiedPayroll() {
       const meData = await meRes.json();
       setCurrentUser(meData.user);
 
-      if (meData.user?.role === 'HR Manager') {
+      if (['HR Manager', 'Admin', 'IT Owner'].includes(meData.user?.role)) {
         const payrollRes = await fetch('/api/payroll');
         const payrollData = await payrollRes.json();
         setRuns(payrollData.runs || []);
@@ -62,18 +62,29 @@ export default function UnifiedPayroll() {
 
   if (loading) return <div style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af' }}>Loading Payroll center...</div>;
 
-  const isHR = currentUser?.role === 'HR Manager';
+  const isPrivileged = ['HR Manager', 'Admin', 'IT Owner'].includes(currentUser?.role);
+  const canRunPayroll = currentUser?.role === 'HR Manager';
+
+  function downloadPayslipPdf(slipId) {
+    const a = document.createElement('a');
+    a.href = `/api/payroll/payslip/${slipId}/pdf`;
+    a.target = '_blank';
+    a.rel = 'noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 
   return (
     <div style={{ maxWidth: '1100px' }}>
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Payroll Portal</h1>
         <p style={{ color: '#6b7280', marginTop: '0.25rem' }}>
-          {isHR ? 'Run payroll using live attendance active-hours and saved monthly salaries.' : 'View, print, and audit your released payslips.'}
+          {canRunPayroll ? 'Run payroll using live attendance active-hours and saved monthly salaries.' : 'View, print, and audit your released payslips.'}
         </p>
       </div>
 
-      {isHR && (
+      {canRunPayroll && (
         <div style={{ background: '#fff', border: '1px solid #f0ece6', borderRadius: 16, padding: '1.75rem', marginBottom: '2rem', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <h2 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Play size={18} color="#7B5EA7" /> Run Month-End Payroll Calculations
@@ -98,7 +109,7 @@ export default function UnifiedPayroll() {
         </div>
       )}
 
-      {isHR && (
+      {isPrivileged && (
         <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f0ece6', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #f0ece6', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Calculated Payroll Runs</span>
@@ -125,7 +136,7 @@ export default function UnifiedPayroll() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                       <thead>
                         <tr style={{ background: '#fafaf9', borderBottom: '1px solid #f3f4f6' }}>
-                          {['Employee', 'Base', 'PF', 'TDS', 'LOP', 'Net salary'].map(h => (
+                          {['Employee', 'Base', 'PF', 'TDS', 'LOP', 'Net salary', 'Download'].map(h => (
                             <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: '#9ca3af', fontWeight: 600 }}>{h}</th>
                           ))}
                         </tr>
@@ -139,6 +150,14 @@ export default function UnifiedPayroll() {
                             <td style={{ padding: '0.5rem 0.75rem', color: '#ef4444' }}>-INR {slip.tds.toLocaleString('en-IN')}</td>
                             <td style={{ padding: '0.5rem 0.75rem', color: slip.lop > 0 ? '#ef4444' : '#9ca3af' }}>-INR {slip.lop.toLocaleString('en-IN')}</td>
                             <td style={{ padding: '0.5rem 0.75rem', fontWeight: 700, color: '#10b981' }}>INR {slip.net.toLocaleString('en-IN')}</td>
+                            <td style={{ padding: '0.5rem 0.75rem' }}>
+                              <button
+                                onClick={() => downloadPayslipPdf(slip.id)}
+                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                              >
+                                PDF
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -151,7 +170,7 @@ export default function UnifiedPayroll() {
         </div>
       )}
 
-      {!isHR && <EmployeePayslipsView />}
+      {!isPrivileged && <EmployeePayslipsView />}
     </div>
   );
 }

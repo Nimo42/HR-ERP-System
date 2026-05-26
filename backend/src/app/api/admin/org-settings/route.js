@@ -9,8 +9,9 @@ function authGuard(decoded) {
   return decoded && decoded.role === 'Admin';
 }
 
-function getCurrentYearRange() {
-  const year = new Date().getFullYear();
+function getYearRange(yearInput) {
+  const parsedYear = Number.parseInt(yearInput, 10);
+  const year = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
   const start = new Date(year, 0, 1, 0, 0, 0, 0);
   const end = new Date(year, 11, 31, 23, 59, 59, 999);
   return { year, start, end };
@@ -25,7 +26,8 @@ export async function GET(request) {
     const decoded = jwt.decode(token);
     if (!authGuard(decoded)) return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
 
-    const { year, start, end } = getCurrentYearRange();
+    const { searchParams } = new URL(request.url);
+    const { year, start, end } = getYearRange(searchParams.get('year'));
     const [settings, departments, locations, holidays] = await Promise.all([
       prisma.orgSetting.findMany(),
       prisma.department.findMany({
@@ -151,58 +153,45 @@ export async function POST(request) {
     }
 
     if (section === 'holiday') {
-      const { year, start, end } = getCurrentYearRange();
+      const { year, start, end } = getYearRange(data?.year);
 
-      if (data.action === 'create') {
-        const name = String(data.name || '').trim();
-        const parsed = new Date(data.date);
-        if (!name || Number.isNaN(parsed.getTime())) {
-          return NextResponse.json({ message: 'Valid holiday name and date are required' }, { status: 400 });
+      if (data.action === 'toggle') {
+        const dateText = String(data.date || '').trim();
+        const name = String(data.name || 'Holiday').trim() || 'Holiday';
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText);
+        if (!m) {
+          return NextResponse.json({ message: 'Date must be in YYYY-MM-DD format' }, { status: 400 });
+        }
+
+        const parsed = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+        if (Number.isNaN(parsed.getTime())) {
+          return NextResponse.json({ message: 'Invalid holiday date' }, { status: 400 });
         }
         if (parsed < start || parsed > end) {
           return NextResponse.json({ message: `Holiday date must be within ${year}` }, { status: 400 });
         }
-        await prisma.holidayCalendar.create({ data: { name, date: parsed } });
-      } else if (data.action === 'sync') {
-        const apiUrl = `https://date.nager.at/api/v3/PublicHolidays/${year}/IN`;
-        const response = await fetch(apiUrl, { cache: 'no-store' });
-        if (!response.ok) {
-          return NextResponse.json({ message: 'Failed to fetch public holiday calendar' }, { status: 502 });
-        }
+        const dayStart = new Date(parsed);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(parsed);
+        dayEnd.setHours(23, 59, 59, 999);
 
-        const remoteHolidays = await response.json();
-        if (!Array.isArray(remoteHolidays)) {
-          return NextResponse.json({ message: 'Holiday API returned invalid data' }, { status: 502 });
-        }
+        const existing = await prisma.holidayCalendar.findFirst({
+          where: {
+            deletedAt: null,
+            date: { gte: dayStart, lte: dayEnd }
+          }
+        });
 
-        let created = 0;
-        for (const item of remoteHolidays) {
-          const dateValue = new Date(item.date);
-          const name = String(item.localName || item.name || '').trim();
-          if (!name || Number.isNaN(dateValue.getTime())) continue;
-          if (dateValue < start || dateValue > end) continue;
-
-          const dayStart = new Date(dateValue);
-          dayStart.setHours(0, 0, 0, 0);
-          const dayEnd = new Date(dateValue);
-          dayEnd.setHours(23, 59, 59, 999);
-
-          const existing = await prisma.holidayCalendar.findFirst({
-            where: {
-              deletedAt: null,
-              name,
-              date: { gte: dayStart, lte: dayEnd }
-            }
+        if (existing) {
+          await prisma.holidayCalendar.update({
+            where: { id: existing.id },
+            data: { deletedAt: new Date() }
           });
-          if (existing) continue;
-
-          await prisma.holidayCalendar.create({ data: { name, date: dateValue } });
-          created++;
+          return NextResponse.json({ success: true, toggled: 'removed' });
         }
 
-        return NextResponse.json({ success: true, synced: true, year, created });
-      } else if (data.action === 'delete' && data.id) {
-        await prisma.holidayCalendar.update({ where: { id: data.id }, data: { deletedAt: new Date() } });
+        await prisma.holidayCalendar.create({ data: { name, date: parsed } });
+        return NextResponse.json({ success: true, toggled: 'added' });
       }
     }
 

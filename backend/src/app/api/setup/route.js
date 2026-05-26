@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -94,32 +93,24 @@ export async function POST(request) {
       
       const hrUser = await prisma.user.upsert({
         where: { email: hrEmail },
-        update: { name: hrName, role: 'HR Manager', departmentId: department?.id },
+        update: { name: hrName, role: 'HR Manager', departmentId: department?.id, password: hashedPassword, resetPasswordToken: null, resetPasswordExpires: null },
         create: {
           email: hrEmail,
           name: hrName,
           password: hashedPassword,
           role: 'HR Manager',
-          departmentId: department?.id
+          departmentId: department?.id,
+          resetPasswordToken: null,
+          resetPasswordExpires: null
         }
-      });
-
-      // Generate invitation token state for in-app invitation flow
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-      const tokenExpiration = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-      await prisma.user.update({
-        where: { id: hrUser.id },
-        data: { resetPasswordToken: hashedToken, resetPasswordExpires: tokenExpiration }
       });
 
       await prisma.notification.create({
         data: {
           userId: hrUser.id,
-          type: 'invitation',
+          type: 'system',
           title: `Welcome to ${companyName}`,
-          content: `You have been invited as HR Manager for ${companyName}. Please accept or decline this invitation.`,
+          content: `Your HR Manager account is ready. Use Password@123 to sign in.`,
         }
       });
     }

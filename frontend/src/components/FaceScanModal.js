@@ -23,6 +23,8 @@ export default function FaceScanModal({ action, workLocation, onSuccess, onCance
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const loopRef = useRef(null);
+  const processingRef = useRef(false);
+  const scanTimeoutRef = useRef(null);
 
   const [phase, setPhase] = useState('loading');
   const [msg, setMsg] = useState('Loading face recognition...');
@@ -115,8 +117,16 @@ export default function FaceScanModal({ action, workLocation, onSuccess, onCance
 
   function startBlinkLoop() {
     if (loopRef.current) clearInterval(loopRef.current);
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+    scanTimeoutRef.current = setTimeout(() => {
+      if (phase === 'waiting-blink' && !processingRef.current) {
+        setPhase('error');
+        setMsg('Verification took too long. Please retry with better lighting.');
+      }
+    }, 20000);
+
     loopRef.current = setInterval(async () => {
-      if (!videoRef.current || !window.faceapi || blinkDetectedRef.current) return;
+      if (!videoRef.current || !window.faceapi || blinkDetectedRef.current || processingRef.current) return;
 
       try {
         const result = await window.faceapi
@@ -159,6 +169,7 @@ export default function FaceScanModal({ action, workLocation, onSuccess, onCance
         }
 
         if (stableFaceFramesRef.current >= MIN_STABLE_FACE_FRAMES) {
+          processingRef.current = true;
           clearInterval(loopRef.current);
           setBlinkDone(true);
           await captureAndVerify();
@@ -186,11 +197,15 @@ export default function FaceScanModal({ action, workLocation, onSuccess, onCance
       }
 
       const liveEmbedding = Array.from(result.descriptor);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
       const res = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workLocation, liveEmbedding })
+        body: JSON.stringify({ workLocation, liveEmbedding }),
+        signal: controller.signal
       });
+      clearTimeout(timeout);
 
       const data = await safeJson(res);
       if (!data) {
@@ -211,11 +226,14 @@ export default function FaceScanModal({ action, workLocation, onSuccess, onCance
     } catch {
       setPhase('error');
       setMsg('Verification failed. Network error.');
+    } finally {
+      processingRef.current = false;
     }
   }
 
   function stopCamera() {
     if (loopRef.current) clearInterval(loopRef.current);
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
     }
@@ -227,6 +245,7 @@ export default function FaceScanModal({ action, workLocation, onSuccess, onCance
 
   function retry() {
     resetBlinkState();
+    processingRef.current = false;
     setPhase('waiting-blink');
     setMsg('Look at the camera for face verification.');
     startBlinkLoop();

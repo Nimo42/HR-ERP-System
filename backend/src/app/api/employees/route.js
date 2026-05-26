@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -121,10 +120,6 @@ export async function POST(request) {
 
     let resolvedDepartmentId = departmentId || null;
 
-    const firstLoginToken = crypto.randomBytes(32).toString('hex');
-    const firstLoginTokenHash = crypto.createHash('sha256').update(firstLoginToken).digest('hex');
-    const firstLoginExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-
     // Create the user
     const newUser = await prisma.user.create({
       data: {
@@ -138,8 +133,8 @@ export async function POST(request) {
         faceEnrolled: false,
         faceEmbedding: null,
         faceEnrolledAt: null,
-        resetPasswordToken: firstLoginTokenHash,
-        resetPasswordExpires: firstLoginExpiry,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
       }
     });
 
@@ -162,9 +157,9 @@ export async function POST(request) {
     await prisma.notification.create({
       data: {
         userId: newUser.id,
-        type: 'invitation',
-        title: 'Account Activation Required',
-        content: 'Accept this invitation to activate your account and continue.',
+        type: 'system',
+        title: 'Welcome to Antbox',
+        content: 'Your account is ready. Use your initial password to sign in.',
       }
     });
 

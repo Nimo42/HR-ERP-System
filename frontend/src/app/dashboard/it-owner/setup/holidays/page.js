@@ -1,145 +1,168 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September','October', 'November', 'December'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function toYmd(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 export default function HolidaysPage() {
+  const [year, setYear] = useState(new Date().getFullYear());
   const [holidays, setHolidays] = useState([]);
-  const [holidayYear, setHolidayYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: '', date: '' });
-  const [saving, setSaving] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [savingDate, setSavingDate] = useState('');
+  const [error, setError] = useState('');
 
-  const load = () => {
+  const holidaySet = useMemo(() => {
+    return new Set(holidays.map((h) => toYmd(new Date(h.date))));
+  }, [holidays]);
+
+  async function load(targetYear = year) {
     setLoading(true);
-    fetch('/api/admin/org-settings')
-      .then(res => res.json())
-      .then(d => {
-        if (d.holidays) setHolidays(d.holidays);
-        if (d.holidayYear) setHolidayYear(d.holidayYear);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  };
-
-  const handleSync = async () => {
-    setSyncing(true);
+    setError('');
     try {
-      const res = await fetch('/api/admin/org-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ section: 'holiday', data: { action: 'sync' } })
-      });
-      const d = await res.json();
+      const res = await fetch(`/api/admin/org-settings?year=${targetYear}`);
+      const data = await res.json();
       if (!res.ok) {
-        alert(d.message || 'Failed to sync holidays');
+        setError(data.message || 'Failed to load holiday calendar.');
+        setHolidays([]);
       } else {
-        alert(`Holiday sync complete for ${d.year}. Added ${d.created || 0} new holidays.`);
-        load();
+        setHolidays(data.holidays || []);
       }
     } catch {
-      alert('Failed to sync holidays');
+      setError('Failed to load holiday calendar.');
+      setHolidays([]);
     } finally {
-      setSyncing(false);
+      setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load(year);
+  }, [year]);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (!form.name.trim() || !form.date) return;
-    setSaving(true);
+  async function toggleHoliday(dateObj) {
+    const date = toYmd(dateObj);
+    setSavingDate(date);
+    setError('');
     try {
       const res = await fetch('/api/admin/org-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ section: 'holiday', data: { action: 'create', ...form } })
+        body: JSON.stringify({
+          section: 'holiday',
+          data: {
+            action: 'toggle',
+            year,
+            date,
+            name: `Holiday - ${date}`
+          }
+        })
       });
-      if (res.ok) {
-        setShowAdd(false);
-        setForm({ name: '', date: '' });
-        load();
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || 'Failed to update holiday.');
       } else {
-        alert('Failed to save holiday');
+        await load(year);
       }
     } catch {
-      alert('An error occurred');
+      setError('Failed to update holiday.');
     } finally {
-      setSaving(false);
+      setSavingDate('');
     }
-  };
+  }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to remove this holiday?')) return;
-    try {
-      const res = await fetch('/api/admin/org-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ section: 'holiday', data: { action: 'delete', id } })
-      });
-      if (res.ok) load();
-    } catch {
-      alert('Failed to remove holiday');
+  function renderMonth(monthIndex) {
+    const firstDay = new Date(year, monthIndex, 1);
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const leadingBlanks = firstDay.getDay();
+    const cells = [];
+
+    for (let i = 0; i < leadingBlanks; i++) cells.push(<div key={`blank-${monthIndex}-${i}`} />);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, monthIndex, d);
+      const ymd = toYmd(dateObj);
+      const isHoliday = holidaySet.has(ymd);
+      const isSaving = savingDate === ymd;
+      const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+
+      cells.push(
+        <button
+          key={ymd}
+          onClick={() => toggleHoliday(dateObj)}
+          disabled={isSaving}
+          title={isHoliday ? 'Click to remove holiday' : 'Click to mark holiday'}
+          style={{
+            border: isHoliday ? '1px solid #bbf7d0' : '1px solid #e5e7eb',
+            background: isHoliday ? '#ecfdf5' : '#fff',
+            color: isHoliday ? '#166534' : (isWeekend ? '#9ca3af' : '#374151'),
+            borderRadius: 8,
+            height: 32,
+            fontSize: '0.75rem',
+            cursor: isSaving ? 'wait' : 'pointer',
+            fontWeight: isHoliday ? 700 : 500,
+            opacity: isSaving ? 0.65 : 1
+          }}
+        >
+          {d}
+        </button>
+      );
     }
-  };
 
-  if (loading) return <div style={{ padding: '2rem', color: '#6b7280' }}>Loading holidays...</div>;
+    return (
+      <div key={monthIndex} style={{ background: '#fff', border: '1px solid #f0ece6', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #f0ece6', fontWeight: 700, color: '#111827', fontSize: '0.9rem' }}>
+          {MONTHS[monthIndex]}
+        </div>
+        <div style={{ padding: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.35rem', marginBottom: '0.5rem' }}>
+            {WEEKDAYS.map((w) => (
+              <div key={`${monthIndex}-${w}`} style={{ textAlign: 'center', fontSize: '0.68rem', color: '#9ca3af', fontWeight: 700 }}>
+                {w}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.35rem' }}>
+            {cells}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: 800 }}>
-      {showAdd && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <form onSubmit={handleSave} style={{ background: '#fff', borderRadius: 16, padding: '2rem', width: 400 }}>
-            <h2 style={{ margin: '0 0 1rem' }}>Add Holiday</h2>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#4b5563', marginBottom: 4 }}>Holiday Name</label>
-              <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Diwali" style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: 8, boxSizing: 'border-box' }} />
-            </div>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#4b5563', marginBottom: 4 }}>Date</label>
-              <input required type="date" min={`${holidayYear}-01-01`} max={`${holidayYear}-12-31`} value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} style={{ width: '100%', padding: '0.75rem', border: '1px solid #e5e7eb', borderRadius: 8, boxSizing: 'border-box' }} />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setShowAdd(false)} style={{ padding: '0.625rem 1.25rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>Cancel</button>
-              <button type="submit" disabled={saving} style={{ padding: '0.625rem 1.25rem', borderRadius: 8, border: 'none', background: '#7B5EA7', color: '#fff', cursor: 'pointer' }}>Save</button>
-            </div>
-          </form>
+    <div style={{ maxWidth: 1200 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', gap: '1rem', flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Yearly Holiday Calendar</h1>
+          <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: '0.35rem 0 0' }}>Click any date to mark/unmark it as a paid holiday for payroll calculations.</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button onClick={() => setYear((v) => v - 1)} style={{ padding: '0.5rem 0.75rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>Prev</button>
+          <div style={{ minWidth: 96, textAlign: 'center', fontWeight: 800, color: '#111827' }}>{year}</div>
+          <button onClick={() => setYear((v) => v + 1)} style={{ padding: '0.5rem 0.75rem', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>Next</button>
+        </div>
+      </div>
+
+      {error && <div style={{ marginBottom: '1rem', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: 10, padding: '0.75rem 1rem', fontSize: '0.875rem' }}>{error}</div>}
+
+      <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: '#4b5563' }}>
+        Selected holidays in {year}: <strong>{holidays.length}</strong>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '2rem', color: '#6b7280' }}>Loading yearly holiday calendar...</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '1rem' }}>
+          {Array.from({ length: 12 }, (_, monthIdx) => renderMonth(monthIdx))}
         </div>
       )}
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827', margin: 0 }}>Holiday Calendar</h1>
-          <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>Define org-wide paid holidays for {holidayYear}. Holiday dates are treated as paid leave in payroll.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={handleSync} disabled={syncing} style={{ padding: '0.625rem 1rem', borderRadius: 9999, border: '1px solid #d1fae5', background: '#ecfdf5', color: '#047857', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer' }}>{syncing ? 'Syncing...' : `Sync ${holidayYear} From API`}</button>
-          <button onClick={() => setShowAdd(true)} style={{ padding: '0.625rem 1.25rem', borderRadius: 9999, border: 'none', background: '#7B5EA7', color: '#fff', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}>+ Add Holiday</button>
-        </div>
-      </div>
-
-      <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f0ece6', overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr auto', gap: '1rem', padding: '1rem 1.5rem', background: '#faf9f8', borderBottom: '1px solid #f0ece6', fontSize: '0.6875rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>
-          <div>Holiday</div>
-          <div>Date</div>
-          <div style={{ textAlign: 'right' }}>Actions</div>
-        </div>
-        {holidays.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>No holidays added.</div>
-        ) : (
-          holidays.map((h, i) => (
-            <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr auto', gap: '1rem', padding: '1rem 1.5rem', borderBottom: i < holidays.length - 1 ? '1px solid #f0ece6' : 'none', alignItems: 'center' }}>
-              <div style={{ fontWeight: 600, color: '#111827' }}>{h.name}</div>
-              <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{new Date(h.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                <button onClick={() => handleDelete(h.id)} style={{ padding: '0.25rem 0.75rem', borderRadius: 6, border: '1px solid #fee2e2', background: '#fef2f2', color: '#dc2626', fontSize: '0.75rem', cursor: 'pointer' }}>Remove</button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
     </div>
   );
 }

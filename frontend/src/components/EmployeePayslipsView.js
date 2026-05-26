@@ -36,9 +36,8 @@ export default function EmployeePayslipsView() {
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   function handleDownload(slip) {
-    if (!slip.fileUrl) return;
     const a = document.createElement('a');
-    a.href = slip.fileUrl;
+    a.href = `/api/payroll/payslip/${slip.id}/pdf`;
     a.target = '_blank';
     a.rel = 'noreferrer';
     document.body.appendChild(a);
