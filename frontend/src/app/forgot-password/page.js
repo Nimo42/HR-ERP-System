@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 
 export default function ForgotPassword() {
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -26,9 +24,10 @@ export default function ForgotPassword() {
   const passwordsMatch = password && confirmPassword && password === confirmPassword;
 
   useEffect(() => {
-    const qEmail = searchParams.get('email');
+    if (typeof window === 'undefined') return;
+    const qEmail = new URLSearchParams(window.location.search).get('email');
     if (qEmail) setEmail(qEmail);
-  }, [searchParams]);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
