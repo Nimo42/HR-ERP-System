@@ -37,3 +37,29 @@ export function calculatePayrollBreakdown({
 
   return { gross, pf, esi, tds, lop, net, payableHours, unpaidHours };
 }
+
+export function calculateWorkedHoursInRange(logs, rangeStart, rangeEnd) {
+  const startTime = rangeStart instanceof Date ? rangeStart.getTime() : new Date(rangeStart).getTime();
+  const endTime = rangeEnd instanceof Date ? rangeEnd.getTime() : new Date(rangeEnd).getTime();
+
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) {
+    return 0;
+  }
+
+  let totalHours = 0;
+  for (const log of logs || []) {
+    const clockInTime = new Date(log.clockInTime).getTime();
+    if (!Number.isFinite(clockInTime) || clockInTime > endTime) continue;
+
+    const clockOutCandidate = log.clockOutTime ? new Date(log.clockOutTime).getTime() : endTime;
+    if (!Number.isFinite(clockOutCandidate)) continue;
+
+    const effectiveStart = Math.max(clockInTime, startTime);
+    const effectiveEnd = Math.min(clockOutCandidate, endTime);
+    if (effectiveEnd <= effectiveStart) continue;
+
+    totalHours += (effectiveEnd - effectiveStart) / (1000 * 60 * 60);
+  }
+
+  return totalHours;
+}

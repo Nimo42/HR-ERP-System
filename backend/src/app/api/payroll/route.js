@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import fs from 'fs/promises';
 import path from 'path';
-import { REQUIRED_HOURS_PER_DAY, getWeekdaysInMonth, calculatePayrollBreakdown } from '../../../lib/payroll';
+import { REQUIRED_HOURS_PER_DAY, getWeekdaysInMonth, calculatePayrollBreakdown, calculateWorkedHoursInRange } from '../../../lib/payroll';
 
 const prisma = new PrismaClient();
 
@@ -100,12 +100,15 @@ export async function GET(request) {
       const payslips = await prisma.payslip.findMany({
         where: {
           userId: decoded.id,
-          payrollRun: { status: 'Finalized' }
         },
         include: {
           payrollRun: true
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: [
+          { payrollRun: { year: 'desc' } },
+          { payrollRun: { month: 'desc' } },
+          { createdAt: 'desc' }
+        ]
       });
       return NextResponse.json({ payslips });
     }
@@ -159,6 +162,9 @@ export async function POST(request) {
     const totalWorkdays = getWeekdaysInMonth(parseInt(year), parseInt(month));
     const startOfMonth = new Date(year, month - 1, 1);
     const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+    const now = new Date();
+    const isCurrentMonth = now.getFullYear() === parseInt(year) && now.getMonth() + 1 === parseInt(month);
+    const periodEnd = isCurrentMonth ? now : endOfMonth;
     const paidHolidays = await prisma.holidayCalendar.findMany({
       where: {
         deletedAt: null,
@@ -201,18 +207,15 @@ export async function POST(request) {
         const monthLogs = await tx.attendanceLog.findMany({
           where: {
             userId: u.id,
-            clockInTime: { gte: startOfMonth, lte: endOfMonth }
+            clockInTime: { lte: periodEnd },
+            OR: [
+              { clockOutTime: { gte: startOfMonth } },
+              { clockOutTime: null }
+            ]
           },
           select: { clockInTime: true, clockOutTime: true }
         });
-
-        let workedHours = 0;
-        for (const log of monthLogs) {
-          if (log.clockInTime && log.clockOutTime) {
-            const hours = (new Date(log.clockOutTime) - new Date(log.clockInTime)) / (1000 * 60 * 60);
-            workedHours += Number.isFinite(hours) ? Math.max(0, hours) : 0;
-          }
-        }
+        const workedHours = calculateWorkedHoursInRange(monthLogs, startOfMonth, periodEnd);
 
         const requiredHours = totalWorkdays * REQUIRED_HOURS_PER_DAY;
         const paidHolidayHours = paidHolidayCount * REQUIRED_HOURS_PER_DAY;

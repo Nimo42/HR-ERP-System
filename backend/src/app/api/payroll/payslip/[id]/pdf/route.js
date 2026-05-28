@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
-import PDFDocument from 'pdfkit';
+import * as PDFKit from 'pdfkit';
 
 const prisma = new PrismaClient();
+const PDFDocument = PDFKit.default || PDFKit;
 
 function INR(value) {
   return `Rs ${Math.round(Number(value || 0)).toLocaleString('en-IN')}`;
@@ -60,7 +61,7 @@ export async function GET(request, { params }) {
     const decoded = jwt.decode(token);
     if (!decoded) return NextResponse.json({ message: 'Invalid token' }, { status: 401 });
 
-    const { id } = await params;
+    const { id } = params;
     const slip = await prisma.payslip.findUnique({
       where: { id },
       include: {
@@ -73,9 +74,8 @@ export async function GET(request, { params }) {
 
     const isPrivileged = ['Admin', 'HR Manager', 'IT Owner'].includes(decoded.role);
     const isOwner = decoded.id === slip.userId;
-    const isFinalized = slip.payrollRun?.status === 'Finalized';
 
-    if (!isPrivileged && !(isOwner && isFinalized)) {
+    if (!isPrivileged && !isOwner) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
+import { calculateWorkedHoursInRange } from '../../../../lib/payroll';
 
 const prisma = new PrismaClient();
 
@@ -163,19 +164,17 @@ export async function GET(request) {
       const personalLogs = await prisma.attendanceLog.findMany({
         where: {
           userId,
-          clockInTime: { gte: startOfMonth }
+          clockInTime: { lte: todayEnd },
+          OR: [
+            { clockOutTime: { gte: startOfMonth } },
+            { clockOutTime: null }
+          ]
         }
       });
 
       const presentDays = personalLogs.length;
       const lateCount = personalLogs.filter(l => l.late).length;
-      
-      let totalHours = 0;
-      personalLogs.forEach(l => {
-        if (l.clockInTime && l.clockOutTime) {
-          totalHours += (new Date(l.clockOutTime) - new Date(l.clockInTime)) / (1000 * 60 * 60);
-        }
-      });
+      const totalHours = calculateWorkedHoursInRange(personalLogs, startOfMonth, todayEnd);
 
       const nextPayslipDate = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 1)
         .toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });

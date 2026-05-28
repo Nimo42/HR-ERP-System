@@ -34,6 +34,10 @@ export default function EmployeePayslipsView() {
   }, [loadData]);
 
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const statusStyles = {
+    Draft: { bg: '#fef3c7', color: '#92400e' },
+    Finalized: { bg: '#d1fae5', color: '#065f46' }
+  };
 
   function handleDownload(slip) {
     const a = document.createElement('a');
@@ -64,13 +68,15 @@ export default function EmployeePayslipsView() {
           <div style={{ padding: '4rem 2rem', textAlign: 'center' }}>
             <FileText size={48} color="#e5e7eb" style={{ margin: '0 auto 1rem auto' }} />
             <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#374151', margin: '0 0 0.5rem 0' }}>No payslips available</h3>
-            <p style={{ color: '#9ca3af', fontSize: '0.875rem', maxWidth: '300px', margin: '0 auto' }}>You do not have any finalized payslips available for download yet.</p>
+            <p style={{ color: '#9ca3af', fontSize: '0.875rem', maxWidth: '360px', margin: '0 auto' }}>Your payslips will appear here once HR creates a payroll run. Draft and finalized slips both show up for your own account.</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {payslips.map((slip, idx) => {
-              const month = monthNames[slip.payrollRun.month - 1];
-              const year = slip.payrollRun.year;
+              const month = monthNames[(slip.payrollRun?.month || 1) - 1];
+              const year = slip.payrollRun?.year || '';
+              const status = slip.payrollRun?.status || 'Draft';
+              const badge = statusStyles[status] || statusStyles.Draft;
               
               return (
                 <div key={slip.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.5rem', borderBottom: idx < payslips.length - 1 ? '1px solid #f3f4f6' : 'none', transition: 'background 0.2s', ':hover': { background: '#fafaf9' } }}>
@@ -80,7 +86,12 @@ export default function EmployeePayslipsView() {
                       <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#374151', lineHeight: 1, marginTop: '2px' }}>{year}</div>
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600, color: '#111827', fontSize: '1rem' }}>Salary Slip - {month} {year}</div>
+                      <div style={{ fontWeight: 600, color: '#111827', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        Salary Slip - {month} {year}
+                        <span style={{ fontSize: '0.6875rem', fontWeight: 700, padding: '0.125rem 0.45rem', borderRadius: 999, background: badge.bg, color: badge.color }}>
+                          {status}
+                        </span>
+                      </div>
                       <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>Net Pay: <span style={{ fontWeight: 600, color: '#10b981' }}>₹{slip.net.toLocaleString('en-IN')}</span></div>
                     </div>
                   </div>

@@ -188,13 +188,14 @@ export async function POST(request) {
         tokenExpiry,
       },
       include: {
-        user: { select: { name: true, email: true, manager: { select: { name: true, email: true } } } },
+        user: { select: { name: true, email: true, manager: { select: { id: true, name: true, email: true } } } },
         leaveType: { select: { name: true } }
       }
     });
 
     // Send approval email to manager
     const manager = leaveRequest.user.manager;
+    const approverIds = new Set();
     if (manager?.email) {
       const { sendEmail } = await import('../../../lib/email');
       const approveUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/api/leaves/action?token=${approvalToken}&action=approve`;
@@ -222,6 +223,42 @@ export async function POST(request) {
         `
       });
     }
+
+    if (manager?.id) {
+      approverIds.add(manager.id);
+    }
+
+    const hrRecipients = await prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        role: { in: ['HR Manager', 'Admin'] }
+      },
+      select: { id: true }
+    });
+
+    for (const recipient of hrRecipients) {
+      approverIds.add(recipient.id);
+    }
+
+    const notificationPayloads = Array.from(approverIds).map((userId) => ({
+      userId,
+      title: 'New Leave Request',
+      content: `${leaveRequest.user.name} submitted a ${leaveRequest.leaveType.name} request for ${start.toLocaleDateString('en-IN')} to ${end.toLocaleDateString('en-IN')}.`,
+      type: 'leave'
+    }));
+
+    if (notificationPayloads.length > 0) {
+      await prisma.notification.createMany({ data: notificationPayloads });
+    }
+
+    await prisma.notification.create({
+      data: {
+        userId: decoded.id,
+        title: 'Leave Request Submitted',
+        content: `Your ${leaveRequest.leaveType.name} request for ${start.toLocaleDateString('en-IN')} to ${end.toLocaleDateString('en-IN')} has been submitted and is awaiting review.`,
+        type: 'leave'
+      }
+    });
 
     return NextResponse.json({ success: true, request: leaveRequest }, { status: 201 });
   } catch (error) {

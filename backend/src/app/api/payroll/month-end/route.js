@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
 import { sendEmail } from '../../../../lib/email';
-import { REQUIRED_HOURS_PER_DAY, getWeekdaysInMonth, calculatePayrollBreakdown } from '../../../../lib/payroll';
+import { REQUIRED_HOURS_PER_DAY, getWeekdaysInMonth, calculatePayrollBreakdown, calculateWorkedHoursInRange } from '../../../../lib/payroll';
 
 const prisma = new PrismaClient();
 function INR(value) {
@@ -134,17 +134,17 @@ export async function POST(request) {
         const baseSalary = Number(u.monthlySalary || 0);
 
         const monthLogs = await tx.attendanceLog.findMany({
-          where: { userId: u.id, clockInTime: { gte: startOfMonth, lte: endOfMonth } },
+          where: {
+            userId: u.id,
+            clockInTime: { lte: endOfMonth },
+            OR: [
+              { clockOutTime: { gte: startOfMonth } },
+              { clockOutTime: null }
+            ]
+          },
           select: { clockInTime: true, clockOutTime: true }
         });
-
-        let workedHours = 0;
-        for (const log of monthLogs) {
-          if (log.clockInTime && log.clockOutTime) {
-            const hours = (new Date(log.clockOutTime) - new Date(log.clockInTime)) / (1000 * 60 * 60);
-            workedHours += Number.isFinite(hours) ? Math.max(0, hours) : 0;
-          }
-        }
+        const workedHours = calculateWorkedHoursInRange(monthLogs, startOfMonth, endOfMonth);
 
         const requiredHours = totalWorkdays * REQUIRED_HOURS_PER_DAY;
         const paidHolidayHours = paidHolidayCount * REQUIRED_HOURS_PER_DAY;

@@ -35,6 +35,18 @@ export async function GET(request) {
       orderBy: { clockInTime: 'desc' }
     });
 
+    const activeLog = await prisma.attendanceLog.findFirst({
+      where: {
+        userId,
+        clockOutTime: null
+      },
+      orderBy: { clockInTime: 'desc' }
+    });
+
+    if (activeLog && !logs.some((log) => log.id === activeLog.id)) {
+      logs.unshift(activeLog);
+    }
+
     return NextResponse.json({ logs });
   } catch (error) {
     console.error('Attendance GET error:', error);
@@ -109,8 +121,8 @@ export async function POST(request) {
       }
       const distance = Math.sqrt(sumOfSquares);
 
-      // Threshold check (standard Euclidean faceNet threshold = 0.6)
-      if (distance >= 0.6) {
+      // Slightly more forgiving threshold so clock-out stays usable in real lighting.
+      if (distance >= 0.78) {
         return NextResponse.json({ message: 'Face not recognized. Please scan in good lighting and try again.' }, { status: 401 });
       }
     }

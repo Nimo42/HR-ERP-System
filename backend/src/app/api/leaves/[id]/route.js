@@ -77,6 +77,15 @@ export async function PATCH(request, { params }) {
       `
     });
 
+    await prisma.notification.create({
+      data: {
+        userId: leaveRequest.userId,
+        title: `Leave Request ${status}`,
+        content: `Your ${leaveRequest.leaveType.name} request from ${new Date(leaveRequest.startDate).toLocaleDateString('en-IN')} to ${new Date(leaveRequest.endDate).toLocaleDateString('en-IN')} was ${status.toLowerCase()}.`,
+        type: 'leave'
+      }
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Leave PATCH error:', error);
